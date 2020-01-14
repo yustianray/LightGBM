@@ -257,15 +257,15 @@ class LGBMModel(_LGBMModelBase):
             The class label array (only for classification problem).
         n_classes_ : int
             The number of classes (only for classification problem).
-        best_score_ : dict or None
+        best_score_ : dict
             The best score of fitted model.
-        best_iteration_ : int or None
+        best_iteration_ : int
             The best iteration of fitted model if ``early_stopping_rounds`` has been specified.
         objective_ : string or callable
             The concrete objective used while fitting this model.
         booster_ : Booster
             The underlying Booster of this model.
-        evals_result_ : dict or None
+        evals_result_ : dict
             The evaluation results if ``early_stopping_rounds`` has been specified.
         feature_importances_ : array of shape = [n_features]
             The feature importances (the higher, the more important the feature).
@@ -296,12 +296,13 @@ class LGBMModel(_LGBMModelBase):
             raise LightGBMError('Scikit-learn is required for this module')
 
         self.boosting_type = boosting_type
-        self.objective = objective
         self.num_leaves = num_leaves
         self.max_depth = max_depth
         self.learning_rate = learning_rate
         self.n_estimators = n_estimators
         self.subsample_for_bin = subsample_for_bin
+        self.objective = objective
+        self.class_weight = class_weight
         self.min_split_gain = min_split_gain
         self.min_child_weight = min_child_weight
         self.min_child_samples = min_child_samples
@@ -314,19 +315,7 @@ class LGBMModel(_LGBMModelBase):
         self.n_jobs = n_jobs
         self.silent = silent
         self.importance_type = importance_type
-        self._Booster = None
-        self._evals_result = None
-        self._best_score = None
-        self._best_iteration = None
-        self._other_params = {}
-        self._objective = objective
-        self.class_weight = class_weight
-        self._class_weight = None
-        self._class_map = None
-        self._n_features = None
-        self._classes = None
-        self._n_classes = None
-        self.set_params(**kwargs)
+        self.kwargs = kwargs
 
     def _more_tags(self):
         return {'allow_nan': True,
@@ -347,7 +336,7 @@ class LGBMModel(_LGBMModelBase):
             Parameter names mapped to their values.
         """
         params = super(LGBMModel, self).get_params(deep=deep)
-        params.update(self._other_params)
+        params.update(self.kwargs)
         return params
 
     def set_params(self, **params):
@@ -367,7 +356,7 @@ class LGBMModel(_LGBMModelBase):
             setattr(self, key, value)
             if hasattr(self, '_' + key):
                 setattr(self, '_' + key, value)
-            self._other_params[key] = value
+            self.kwargs[key] = value
         return self
 
     def fit(self, X, y,
@@ -476,6 +465,8 @@ class LGBMModel(_LGBMModelBase):
         For multi-class task, the y_pred is group by class_id first, then group by row_id.
         If you want to get i-th row y_pred in j-th class, the access way is y_pred[j * num_data + i].
         """
+        if not hasattr(self, "_objective"):
+            self._objective = self.objective
         if self._objective is None:
             if isinstance(self, LGBMRegressor):
                 self._objective = "regression"
@@ -500,7 +491,7 @@ class LGBMModel(_LGBMModelBase):
         params.pop('class_weight', None)
         for alias in _ConfigAliases.get('objective'):
             params.pop(alias, None)
-        if self._n_classes is not None and self._n_classes > 2:
+        if hasattr(self, "_n_classes") and self._n_classes > 2:
             for alias in _ConfigAliases.get('num_class'):
                 params.pop(alias, None)
             params['num_class'] = self._n_classes
@@ -542,10 +533,8 @@ class LGBMModel(_LGBMModelBase):
         else:
             _X, _y = X, y
 
-        if self._class_weight is None:
-            self._class_weight = self.class_weight
-        if self._class_weight is not None:
-            class_sample_weight = _LGBMComputeSampleWeight(self._class_weight, y)
+        if self.class_weight is not None:
+            class_sample_weight = _LGBMComputeSampleWeight(self.class_weight, y)
             if sample_weight is None or len(sample_weight) == 0:
                 sample_weight = class_sample_weight
             else:
@@ -582,7 +571,7 @@ class LGBMModel(_LGBMModelBase):
                     valid_weight = _get_meta_data(eval_sample_weight, 'eval_sample_weight', i)
                     valid_class_weight = _get_meta_data(eval_class_weight, 'eval_class_weight', i)
                     if valid_class_weight is not None:
-                        if isinstance(valid_class_weight, dict) and self._class_map is not None:
+                        if isinstance(valid_class_weight, dict) and hasattr(self, "_class_map"):
                             valid_class_weight = {self._class_map[k]: v for k, v in valid_class_weight.items()}
                         valid_class_sample_weight = _LGBMComputeSampleWeight(valid_class_weight, valid_data[1])
                         if valid_weight is None or len(valid_weight) == 0:
@@ -606,8 +595,7 @@ class LGBMModel(_LGBMModelBase):
                               categorical_feature=categorical_feature,
                               callbacks=callbacks, init_model=init_model)
 
-        if evals_result:
-            self._evals_result = evals_result
+        self._evals_result = evals_result
 
         if early_stopping_rounds is not None:
             self._best_iteration = self._Booster.best_iteration
@@ -658,7 +646,7 @@ class LGBMModel(_LGBMModelBase):
         X_SHAP_values : array-like of shape = [n_samples, n_features + 1] or shape = [n_samples, (n_features + 1) * n_classes]
             If ``pred_contrib=True``, the feature contributions for each sample.
         """
-        if self._n_features is None:
+        if not hasattr(self, "_n_features"):
             raise LGBMNotFittedError("Estimator not fitted, call `fit` before exploiting the model.")
         if not isinstance(X, (DataFrame, DataTable)):
             X = _LGBMCheckArray(X, accept_sparse=True, force_all_finite=False)
@@ -674,42 +662,42 @@ class LGBMModel(_LGBMModelBase):
     @property
     def n_features_(self):
         """Get the number of features of fitted model."""
-        if self._n_features is None:
+        if not hasattr(self, "_n_features"):
             raise LGBMNotFittedError('No n_features found. Need to call fit beforehand.')
         return self._n_features
 
     @property
     def best_score_(self):
         """Get the best score of fitted model."""
-        if self._n_features is None:
+        if not hasattr(self, "_n_features"):
             raise LGBMNotFittedError('No best_score found. Need to call fit beforehand.')
         return self._best_score
 
     @property
     def best_iteration_(self):
         """Get the best iteration of fitted model."""
-        if self._n_features is None:
+        if not hasattr(self, "_n_features"):
             raise LGBMNotFittedError('No best_iteration found. Need to call fit with early_stopping_rounds beforehand.')
         return self._best_iteration
 
     @property
     def objective_(self):
         """Get the concrete objective used while fitting this model."""
-        if self._n_features is None:
+        if not hasattr(self, "_n_features"):
             raise LGBMNotFittedError('No objective found. Need to call fit beforehand.')
         return self._objective
 
     @property
     def booster_(self):
         """Get the underlying lightgbm Booster of this model."""
-        if self._Booster is None:
+        if not hasattr(self, "_Booster"):
             raise LGBMNotFittedError('No booster found. Need to call fit beforehand.')
         return self._Booster
 
     @property
     def evals_result_(self):
         """Get the evaluation results."""
-        if self._n_features is None:
+        if not hasattr(self, "_n_features"):
             raise LGBMNotFittedError('No results found. Need to call fit with eval_set beforehand.')
         return self._evals_result
 
@@ -722,7 +710,7 @@ class LGBMModel(_LGBMModelBase):
             ``importance_type`` attribute is passed to the function
             to configure the type of importance values to be extracted.
         """
-        if self._n_features is None:
+        if not hasattr(self, "_n_features"):
             raise LGBMNotFittedError('No feature_importances found. Need to call fit beforehand.')
         return self._Booster.feature_importance(importance_type=self.importance_type)
 
@@ -771,10 +759,11 @@ class LGBMClassifier(LGBMModel, _LGBMClassifierBase):
         _y = self._le.transform(y)
         self._class_map = dict(zip_(self._le.classes_, self._le.transform(self._le.classes_)))
         if isinstance(self.class_weight, dict):
-            self._class_weight = {self._class_map[k]: v for k, v in self.class_weight.items()}
+            self.class_weight = {self._class_map[k]: v for k, v in self.class_weight.items()}
 
         self._classes = self._le.classes_
         self._n_classes = len(self._classes)
+        self._objective = self.objective
         if self._n_classes > 2:
             # Switch to using a multiclass objective in the underlying LGBM instance
             ova_aliases = {"multiclassova", "multiclass_ova", "ova", "ovr"}
@@ -884,14 +873,14 @@ class LGBMClassifier(LGBMModel, _LGBMClassifierBase):
     @property
     def classes_(self):
         """Get the class label array."""
-        if self._classes is None:
+        if not hasattr(self, "_classes"):
             raise LGBMNotFittedError('No classes found. Need to call fit beforehand.')
         return self._classes
 
     @property
     def n_classes_(self):
         """Get the number of classes."""
-        if self._n_classes is None:
+        if not hasattr(self, "_n_classes"):
             raise LGBMNotFittedError('No classes found. Need to call fit beforehand.')
         return self._n_classes
 
