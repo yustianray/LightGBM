@@ -61,7 +61,7 @@ void SerialTreeLearner::Init(const Dataset* train_data, bool is_constant_hessian
   ordered_gradients_.resize(num_data_);
   ordered_hessians_.resize(num_data_);
 
-  GetShareStates(train_data_, is_constant_hessian, true);
+  GetShareStates(train_data_, false, true);
   histogram_pool_.DynamicChangeSize(train_data_, share_state_->is_colwise, config_, max_cache_size, config_->num_leaves);
   Log::Info("Number of data points in the train set: %d, number of used features: %d", num_data_, num_features_);
   if (CostEfficientGradientBoosting::IsEnable(config_)) {
@@ -77,13 +77,13 @@ void SerialTreeLearner::GetShareStates(const Dataset* dataset,
     auto used_feature = GetUsedFeatures(true);
     share_state_.reset(dataset->GetShareStates(
         ordered_gradients_.data(), ordered_hessians_.data(), used_feature,
-        is_constant_hessian, config_->force_col_wise, config_->force_row_wise));
+        false, config_->force_col_wise, config_->force_row_wise));
   } else {
     CHECK(share_state_ != nullptr);
     // cannot change is_hist_col_wise during training
     share_state_.reset(dataset->GetShareStates(
         ordered_gradients_.data(), ordered_hessians_.data(), is_feature_used_,
-        is_constant_hessian, share_state_->is_colwise,
+        false, share_state_->is_colwise,
         !share_state_->is_colwise));
   }
   CHECK(share_state_ != nullptr);
@@ -104,7 +104,7 @@ void SerialTreeLearner::ResetTrainingDataInner(const Dataset* train_data,
   data_partition_->ResetNumData(num_data_);
 
   if (reset_multi_val_bin) {
-    GetShareStates(train_data_, is_constant_hessian, false);
+    GetShareStates(train_data_, false, false);
   }
 
   // initialize ordered gradients and hessians
