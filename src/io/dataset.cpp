@@ -651,8 +651,8 @@ TrainingShareStates* Dataset::GetShareStates(
                         hist_data.data());
     col_wise_time = std::chrono::steady_clock::now() - start_time;
     start_time = std::chrono::steady_clock::now();
-    ConstructHistogramsMultiVal(nullptr, num_data_, gradients, hessians,
-                                rowwise_state.get(), hist_data.data());
+    ConstructHistogramsMultiVal<false>(nullptr, num_data_, gradients, hessians,
+                                       rowwise_state.get(), hist_data.data());
     row_wise_time = std::chrono::steady_clock::now() - start_time;
     Log::Debug("col-wise cost %f seconds, row-wise cost %f seconds",
                col_wise_time * 1e-3, row_wise_time * 1e-3);
@@ -1193,6 +1193,7 @@ void Dataset::InitTrain(const std::vector<int8_t>& is_feature_used,
   }
 }
 
+template <bool ordered>
 void Dataset::ConstructHistogramsMultiVal(const data_size_t* data_indices,
                                           data_size_t num_data,
                                           const score_t* gradients,
@@ -1238,12 +1239,22 @@ void Dataset::ConstructHistogramsMultiVal(const data_size_t* data_indices,
     }
     std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin * kHistEntrySize);
     if (data_indices != nullptr && num_data < num_data_) {
-      if (!share_state->is_constant_hessian) {
-        multi_val_bin->ConstructHistogram(data_indices, start, end, gradients,
-                                          hessians, data_ptr);
+      if (ordered) {
+        if (!share_state->is_constant_hessian) {
+          multi_val_bin->ConstructHistogramOrdered(
+              data_indices, start, end, gradients, hessians, data_ptr);
+        } else {
+          multi_val_bin->ConstructHistogramOrdered(data_indices, start, end,
+                                                   gradients, data_ptr);
+        }
       } else {
-        multi_val_bin->ConstructHistogram(data_indices, start, end, gradients,
-                                          data_ptr);
+        if (!share_state->is_constant_hessian) {
+          multi_val_bin->ConstructHistogram(data_indices, start, end, gradients,
+                                            hessians, data_ptr);
+        } else {
+          multi_val_bin->ConstructHistogram(data_indices, start, end, gradients,
+                                            data_ptr);
+        }
       }
     } else {
       if (!share_state->is_constant_hessian) {
@@ -1309,8 +1320,8 @@ void Dataset::ConstructHistograms(
     return;
   }
   if (!share_state->is_colwise) {
-    return ConstructHistogramsMultiVal(data_indices, num_data, gradients,
-                                       hessians, share_state, hist_data);
+    return ConstructHistogramsMultiVal<false>(data_indices, num_data, gradients,
+                                              hessians, share_state, hist_data);
   }
   global_timer.Start("Dataset::Get used group");
   std::vector<int> used_dense_group;
@@ -1337,9 +1348,9 @@ void Dataset::ConstructHistograms(
   int num_used_dense_group = static_cast<int>(used_dense_group.size());
   global_timer.Stop("Dataset::Get used group");
   global_timer.Start("Dataset::dense_bin_histogram");
+  auto ptr_ordered_grad = gradients;
+  auto ptr_ordered_hess = hessians;
   if (num_used_dense_group > 0) {
-    auto ptr_ordered_grad = gradients;
-    auto ptr_ordered_hess = hessians;
     if (data_indices != nullptr && num_data < num_data_) {
       if (!share_state->is_constant_hessian) {
 #pragma omp parallel for schedule(static, 512) if (num_data >= 1024)
@@ -1347,14 +1358,15 @@ void Dataset::ConstructHistograms(
           ordered_gradients[i] = gradients[data_indices[i]];
           ordered_hessians[i] = hessians[data_indices[i]];
         }
+        ptr_ordered_grad = ordered_gradients;
+        ptr_ordered_hess = ordered_hessians;
       } else {
 #pragma omp parallel for schedule(static, 512) if (num_data >= 1024)
         for (data_size_t i = 0; i < num_data; ++i) {
           ordered_gradients[i] = gradients[data_indices[i]];
         }
+        ptr_ordered_grad = ordered_gradients;
       }
-      ptr_ordered_grad = ordered_gradients;
-      ptr_ordered_hess = ordered_hessians;
       if (!share_state->is_constant_hessian) {
         OMP_INIT_EX();
 #pragma omp parallel for schedule(static)
@@ -1440,9 +1452,15 @@ void Dataset::ConstructHistograms(
   }
   global_timer.Stop("Dataset::dense_bin_histogram");
   if (multi_val_groud_id >= 0) {
-    ConstructHistogramsMultiVal(
-        data_indices, num_data, gradients, hessians, share_state,
-        hist_data + group_bin_boundaries_[multi_val_groud_id] * 2);
+    if (num_used_dense_group > 0) {
+      ConstructHistogramsMultiVal<true>(
+          data_indices, num_data, ptr_ordered_grad, ptr_ordered_hess, share_state,
+          hist_data + group_bin_boundaries_[multi_val_groud_id] * 2);
+    } else {
+      ConstructHistogramsMultiVal<false>(
+          data_indices, num_data, gradients, hessians, share_state,
+          hist_data + group_bin_boundaries_[multi_val_groud_id] * 2);
+    }
   }
 }
 
