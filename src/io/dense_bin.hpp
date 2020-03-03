@@ -88,7 +88,7 @@ class DenseBin: public Bin {
           hess[ti] += ordered_hessians[i];
         } else {
           grad[ti] += ordered_gradients[i];
-          ++cnt[ti];
+          hess[ti] += 1.0f;
         }
       }
     }
@@ -100,7 +100,7 @@ class DenseBin: public Bin {
         hess[ti] += ordered_hessians[i];
       } else {
         grad[ti] += ordered_gradients[i];
-        ++cnt[ti];
+        hess[ti] += 1.0f;
       }
     }
   }

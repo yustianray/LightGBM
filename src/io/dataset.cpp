@@ -1358,9 +1358,8 @@ void Dataset::ConstructHistogramsInner(
           feature_groups_[group]->bin_data_->ConstructHistogram(
               0, num_data, ptr_ordered_grad, data_ptr);
         }
-        auto cnt_dst = reinterpret_cast<uint64_t*>(data_ptr + 1);
         for (int i = 0; i < num_bin * 2; i += 2) {
-          data_ptr[i + 1] = static_cast<double>(cnt_dst[i]) * hessians[0];
+          data_ptr[i + 1] = data_ptr[i + 1] * hessians[0];
         }
       }
       OMP_LOOP_EX_END();
