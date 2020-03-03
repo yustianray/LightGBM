@@ -1404,9 +1404,16 @@ void Dataset::ConstructHistogramsInner(
   }
   global_timer.Stop("Dataset::dense_bin_histogram");
   if (multi_val_groud_id >= 0) {
-    ConstructHistogramsMultiVal<use_indices, true, false>(
-        data_indices, num_data, gradients, hessians, share_state,
-        hist_data + group_bin_boundaries_[multi_val_groud_id] * 2);
+    if (num_used_dense_group > 0) {
+      ConstructHistogramsMultiVal<use_indices, true, true>(
+          data_indices, num_data, ptr_ordered_grad, ptr_ordered_hess,
+          share_state,
+          hist_data + group_bin_boundaries_[multi_val_groud_id] * 2);
+    } else {
+      ConstructHistogramsMultiVal<use_indices, true, false>(
+          data_indices, num_data, gradients, hessians, share_state,
+          hist_data + group_bin_boundaries_[multi_val_groud_id] * 2);
+    }
   }
 }
 
