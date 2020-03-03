@@ -495,21 +495,21 @@ class Dataset {
     bool use_indices = data_indices != nullptr && (num_data < num_data_);
     if (share_state->is_constant_hessian) {
       if (use_indices) {
-        ConstructHistogramsInner<true, true>(
-            is_feature_used, data_indices, num_data, gradients, hessians,
-            ordered_gradients, ordered_hessians, share_state, hist_data);
-      } else {
-        ConstructHistogramsInner<false, true>(
-            is_feature_used, data_indices, num_data, gradients, hessians,
-            ordered_gradients, ordered_hessians, share_state, hist_data);
-      }
-    } else {
-      if (use_indices) {
         ConstructHistogramsInner<true, false>(
             is_feature_used, data_indices, num_data, gradients, hessians,
             ordered_gradients, ordered_hessians, share_state, hist_data);
       } else {
         ConstructHistogramsInner<false, false>(
+            is_feature_used, data_indices, num_data, gradients, hessians,
+            ordered_gradients, ordered_hessians, share_state, hist_data);
+      }
+    } else {
+      if (use_indices) {
+        ConstructHistogramsInner<true, true>(
+            is_feature_used, data_indices, num_data, gradients, hessians,
+            ordered_gradients, ordered_hessians, share_state, hist_data);
+      } else {
+        ConstructHistogramsInner<false, true>(
             is_feature_used, data_indices, num_data, gradients, hessians,
             ordered_gradients, ordered_hessians, share_state, hist_data);
       }
