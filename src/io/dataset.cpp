@@ -1241,7 +1241,7 @@ void Dataset::ConstructHistogramsMultiVal(const data_size_t* data_indices,
     std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin * kHistEntrySize);
     if (use_indices) {
       if (ordered) {
-        if (!use_hessian) {
+        if (use_hessian) {
           multi_val_bin->ConstructHistogramOrdered(
               data_indices, start, end, gradients, hessians, data_ptr);
         } else {
@@ -1249,7 +1249,7 @@ void Dataset::ConstructHistogramsMultiVal(const data_size_t* data_indices,
                                                    gradients, data_ptr);
         }
       } else {
-        if (!use_hessian) {
+        if (use_hessian) {
           multi_val_bin->ConstructHistogram(data_indices, start, end, gradients,
                                             hessians, data_ptr);
         } else {
@@ -1258,7 +1258,7 @@ void Dataset::ConstructHistogramsMultiVal(const data_size_t* data_indices,
         }
       }
     } else {
-      if (!use_hessian) {
+      if (use_hessian) {
         multi_val_bin->ConstructHistogram(start, end, gradients, hessians,
                                           data_ptr);
       } else {
@@ -1275,7 +1275,7 @@ void Dataset::ConstructHistogramsMultiVal(const data_size_t* data_indices,
   int bin_block_size = num_bin;
   Threading::BlockInfo<data_size_t>(share_state->num_threads, num_bin, 512, &n_bin_block,
                                     &bin_block_size);
-  if (!use_hessian) {
+  if (use_hessian) {
 #pragma omp parallel for schedule(static)
     for (int t = 0; t < n_bin_block; ++t) {
       const int start = t * bin_block_size;
