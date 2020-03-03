@@ -1293,15 +1293,18 @@ void Dataset::ConstructHistogramsMultiVal(const data_size_t* data_indices,
     for (int t = 0; t < n_bin_block; ++t) {
       const int start = t * bin_block_size;
       const int end = std::min(start + bin_block_size, num_bin);
+      auto cnt_dst = reinterpret_cast<uint64_t*>(hist_data + 1);
       for (int tid = 1; tid < n_data_block; ++tid) {
         auto src_ptr = share_state->hist_buf.data() +
                        static_cast<size_t>(num_bin_aligned) * 2 * (tid - 1);
-        for (int i = start * 2; i < end * 2; ++i) {
+        auto cnt_src = reinterpret_cast<uint64_t*>(src_ptr + 1);
+        for (int i = start * 2; i < end * 2; i += 2) {
           hist_data[i] += src_ptr[i];
+          cnt_dst[i] += cnt_src[i];
         }
       }
-      for (int i = start; i < end; ++i) {
-        GET_HESS(hist_data, i) = GET_HESS(hist_data, i) * hessians[0];
+      for (int i = start * 2; i < end * 2; i += 2) {
+        hist_data[i + 1] = static_cast<double>(cnt_dst[i]) * hessians[0];
       }
     }
   }
@@ -1390,8 +1393,9 @@ void Dataset::ConstructHistogramsInner(
           feature_groups_[group]->bin_data_->ConstructHistogram(
               0, num_data, ptr_ordered_grad, data_ptr);
         }
-        for (int i = 0; i < num_bin; ++i) {
-          GET_HESS(data_ptr, i) = GET_HESS(data_ptr, i) * hessians[0];
+        auto cnt_dst = reinterpret_cast<uint64_t*>(data_ptr + 1);
+        for (int i = 0; i < num_bin * 2; i += 2) {
+          data_ptr[i + 1] = static_cast<double>(cnt_dst[i]) * hessians[0];
         }
       }
       OMP_LOOP_EX_END();

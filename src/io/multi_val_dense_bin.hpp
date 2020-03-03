@@ -50,15 +50,14 @@ class MultiValDenseBin : public MultiValBin {
     return false;
   }
 
-  #define ACC_GH(hist, i, g, h) \
-  const auto ti = static_cast<int>(i) << 1; \
-  hist[ti] += g; \
-  hist[ti + 1] += h; \
 
   template<bool use_indices, bool use_prefetch, bool use_hessians, bool ordered>
   void ConstructHistogramInner(const data_size_t* data_indices, data_size_t start, data_size_t end,
     const score_t* gradients, const score_t* hessians, hist_t* out) const {
     data_size_t i = start;
+    hist_t* grad = out;
+    hist_t* hess = out + 1;
+    uint64_t* cnt = reinterpret_cast<uint64_t*>(hess);
     if (use_prefetch) {
       const data_size_t pf_offset = 32 / sizeof(VAL_T);
       const data_size_t pf_end = end - pf_offset;
@@ -75,18 +74,22 @@ class MultiValDenseBin : public MultiValBin {
         PREFETCH_T0(data_.data() + RowPtr(pf_idx));
         const auto j_start = RowPtr(idx);
         for (auto j = j_start; j < j_start + num_feature_; ++j) {
-          const VAL_T bin = data_[j];
+          const auto ti = static_cast<uint32_t>(data_[j]) << 1;
           if (ordered) {
             if (use_hessians) {
-              ACC_GH(out, bin, gradients[i], hessians[i]);
+              grad[ti] += gradients[i];
+              hess[ti] += hessians[i];
             } else {
-              ACC_GH(out, bin, gradients[i], 1.0f);
+              grad[ti] += gradients[i];
+              ++cnt[ti];
             }
           } else {
             if (use_hessians) {
-              ACC_GH(out, bin, gradients[idx], hessians[idx]);
+              grad[ti] += gradients[idx];
+              hess[ti] += hessians[idx];
             } else {
-              ACC_GH(out, bin, gradients[idx], 1.0f);
+              grad[ti] += gradients[idx];
+              ++cnt[ti];
             }
           }
         }
@@ -96,24 +99,27 @@ class MultiValDenseBin : public MultiValBin {
       const auto idx = use_indices ? data_indices[i] : i;
       const auto j_start = RowPtr(idx);
       for (auto j = j_start; j < j_start + num_feature_; ++j) {
-        const VAL_T bin = data_[j];
+        const auto ti = static_cast<uint32_t>(data_[j]) << 1;
         if (ordered) {
           if (use_hessians) {
-            ACC_GH(out, bin, gradients[i], hessians[i]);
+            grad[ti] += gradients[i];
+            hess[ti] += hessians[i];
           } else {
-            ACC_GH(out, bin, gradients[i], 1.0f);
+            grad[ti] += gradients[i];
+            ++cnt[ti];
           }
         } else {
           if (use_hessians) {
-            ACC_GH(out, bin, gradients[idx], hessians[idx]);
+            grad[ti] += gradients[idx];
+            hess[ti] += hessians[idx];
           } else {
-            ACC_GH(out, bin, gradients[idx], 1.0f);
+            grad[ti] += gradients[idx];
+            ++cnt[ti];
           }
         }
       }
     }
   }
-  #undef ACC_GH
 
   void ConstructHistogram(const data_size_t* data_indices, data_size_t start,
                           data_size_t end, const score_t* gradients,
