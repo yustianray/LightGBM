@@ -1194,7 +1194,7 @@ void Dataset::InitTrain(const std::vector<int8_t>& is_feature_used,
   }
 }
 
-template <bool use_indices, bool use_hessian, bool ordered>
+template <bool use_indices, bool ordered>
 void Dataset::ConstructHistogramsMultiVal(const data_size_t* data_indices,
                                           data_size_t num_data,
                                           const score_t* gradients,
@@ -1241,29 +1241,15 @@ void Dataset::ConstructHistogramsMultiVal(const data_size_t* data_indices,
     std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin * kHistEntrySize);
     if (use_indices) {
       if (ordered) {
-        if (use_hessian) {
-          multi_val_bin->ConstructHistogramOrdered(
-              data_indices, start, end, gradients, hessians, data_ptr);
-        } else {
-          multi_val_bin->ConstructHistogramOrdered(data_indices, start, end,
-                                                   gradients, data_ptr);
-        }
+        multi_val_bin->ConstructHistogramOrdered(data_indices, start, end,
+                                                 gradients, hessians, data_ptr);
       } else {
-        if (use_hessian) {
-          multi_val_bin->ConstructHistogram(data_indices, start, end, gradients,
-                                            hessians, data_ptr);
-        } else {
-          multi_val_bin->ConstructHistogram(data_indices, start, end, gradients,
-                                            data_ptr);
-        }
+        multi_val_bin->ConstructHistogram(data_indices, start, end, gradients,
+                                          hessians, data_ptr);
       }
     } else {
-      if (use_hessian) {
-        multi_val_bin->ConstructHistogram(start, end, gradients, hessians,
-                                          data_ptr);
-      } else {
-        multi_val_bin->ConstructHistogram(start, end, gradients, data_ptr);
-      }
+      multi_val_bin->ConstructHistogram(start, end, gradients, hessians,
+                                        data_ptr);
     }
     OMP_LOOP_EX_END();
   }
@@ -1275,36 +1261,15 @@ void Dataset::ConstructHistogramsMultiVal(const data_size_t* data_indices,
   int bin_block_size = num_bin;
   Threading::BlockInfo<data_size_t>(share_state->num_threads, num_bin, 512, &n_bin_block,
                                     &bin_block_size);
-  if (use_hessian) {
 #pragma omp parallel for schedule(static)
-    for (int t = 0; t < n_bin_block; ++t) {
-      const int start = t * bin_block_size;
-      const int end = std::min(start + bin_block_size, num_bin);
-      for (int tid = 1; tid < n_data_block; ++tid) {
-        auto src_ptr = share_state->hist_buf.data() +
-                       static_cast<size_t>(num_bin_aligned) * 2 * (tid - 1);
-        for (int i = start * 2; i < end * 2; ++i) {
-          hist_data[i] += src_ptr[i];
-        }
-      }
-    }
-  } else {
-#pragma omp parallel for schedule(static)
-    for (int t = 0; t < n_bin_block; ++t) {
-      const int start = t * bin_block_size;
-      const int end = std::min(start + bin_block_size, num_bin);
-      auto cnt_dst = reinterpret_cast<uint64_t*>(hist_data + 1);
-      for (int tid = 1; tid < n_data_block; ++tid) {
-        auto src_ptr = share_state->hist_buf.data() +
-                       static_cast<size_t>(num_bin_aligned) * 2 * (tid - 1);
-        auto cnt_src = reinterpret_cast<uint64_t*>(src_ptr + 1);
-        for (int i = start * 2; i < end * 2; i += 2) {
-          hist_data[i] += src_ptr[i];
-          cnt_dst[i] += cnt_src[i];
-        }
-      }
-      for (int i = start * 2; i < end * 2; i += 2) {
-        hist_data[i + 1] = static_cast<double>(cnt_dst[i]) * hessians[0];
+  for (int t = 0; t < n_bin_block; ++t) {
+    const int start = t * bin_block_size;
+    const int end = std::min(start + bin_block_size, num_bin);
+    for (int tid = 1; tid < n_data_block; ++tid) {
+      auto src_ptr = share_state->hist_buf.data() +
+                     static_cast<size_t>(num_bin_aligned) * 2 * (tid - 1);
+      for (int i = start * 2; i < end * 2; ++i) {
+        hist_data[i] += src_ptr[i];
       }
     }
   }
@@ -1321,7 +1286,7 @@ void Dataset::ConstructHistogramsInner(
     score_t* ordered_gradients, score_t* ordered_hessians,
     TrainingShareStates* share_state, hist_t* hist_data) const {
   if (!share_state->is_colwise) {
-    return ConstructHistogramsMultiVal<use_indices, true, false>(
+    return ConstructHistogramsMultiVal<use_indices, false>(
         data_indices, num_data, gradients, hessians, share_state, hist_data);
   }
   std::vector<int> used_dense_group;
@@ -1405,12 +1370,12 @@ void Dataset::ConstructHistogramsInner(
   global_timer.Stop("Dataset::dense_bin_histogram");
   if (multi_val_groud_id >= 0) {
     if (num_used_dense_group > 0) {
-      ConstructHistogramsMultiVal<use_indices, true, true>(
+      ConstructHistogramsMultiVal<use_indices, true>(
           data_indices, num_data, ptr_ordered_grad, ptr_ordered_hess,
           share_state,
           hist_data + group_bin_boundaries_[multi_val_groud_id] * 2);
     } else {
-      ConstructHistogramsMultiVal<use_indices, true, false>(
+      ConstructHistogramsMultiVal<use_indices, false>(
           data_indices, num_data, gradients, hessians, share_state,
           hist_data + group_bin_boundaries_[multi_val_groud_id] * 2);
     }

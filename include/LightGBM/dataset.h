@@ -526,7 +526,7 @@ class Dataset {
                                 TrainingShareStates* share_state,
                                 hist_t* hist_data) const;
 
-  template <bool use_indices, bool use_hessian, bool ordered>
+  template <bool use_indices, bool ordered>
   void ConstructHistogramsMultiVal(const data_size_t* data_indices,
                                    data_size_t num_data,
                                    const score_t* gradients,

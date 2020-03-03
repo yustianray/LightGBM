@@ -51,13 +51,12 @@ class MultiValDenseBin : public MultiValBin {
   }
 
 
-  template<bool use_indices, bool use_prefetch, bool use_hessians, bool ordered>
+  template<bool use_indices, bool use_prefetch, bool ordered>
   void ConstructHistogramInner(const data_size_t* data_indices, data_size_t start, data_size_t end,
     const score_t* gradients, const score_t* hessians, hist_t* out) const {
     data_size_t i = start;
     hist_t* grad = out;
     hist_t* hess = out + 1;
-    uint64_t* cnt = reinterpret_cast<uint64_t*>(hess);
     if (use_prefetch) {
       const data_size_t pf_offset = 32 / sizeof(VAL_T);
       const data_size_t pf_end = end - pf_offset;
@@ -67,30 +66,18 @@ class MultiValDenseBin : public MultiValBin {
         const auto pf_idx = use_indices ? data_indices[i + pf_offset] : i + pf_offset;
         if (!ordered) {
           PREFETCH_T0(gradients + pf_idx);
-          if (use_hessians) {
-            PREFETCH_T0(hessians + pf_idx);
-          }
+          PREFETCH_T0(hessians + pf_idx);
         }
         PREFETCH_T0(data_.data() + RowPtr(pf_idx));
         const auto j_start = RowPtr(idx);
         for (auto j = j_start; j < j_start + num_feature_; ++j) {
           const auto ti = static_cast<uint32_t>(data_[j]) << 1;
           if (ordered) {
-            if (use_hessians) {
-              grad[ti] += gradients[i];
-              hess[ti] += hessians[i];
-            } else {
-              grad[ti] += gradients[i];
-              ++cnt[ti];
-            }
+            grad[ti] += gradients[i];
+            hess[ti] += hessians[i];
           } else {
-            if (use_hessians) {
-              grad[ti] += gradients[idx];
-              hess[ti] += hessians[idx];
-            } else {
-              grad[ti] += gradients[idx];
-              ++cnt[ti];
-            }
+            grad[ti] += gradients[idx];
+            hess[ti] += hessians[idx];
           }
         }
       }
@@ -101,21 +88,11 @@ class MultiValDenseBin : public MultiValBin {
       for (auto j = j_start; j < j_start + num_feature_; ++j) {
         const auto ti = static_cast<uint32_t>(data_[j]) << 1;
         if (ordered) {
-          if (use_hessians) {
-            grad[ti] += gradients[i];
-            hess[ti] += hessians[i];
-          } else {
-            grad[ti] += gradients[i];
-            ++cnt[ti];
-          }
+          grad[ti] += gradients[i];
+          hess[ti] += hessians[i];
         } else {
-          if (use_hessians) {
-            grad[ti] += gradients[idx];
-            hess[ti] += hessians[idx];
-          } else {
-            grad[ti] += gradients[idx];
-            ++cnt[ti];
-          }
+          grad[ti] += gradients[idx];
+          hess[ti] += hessians[idx];
         }
       }
     }
@@ -124,29 +101,15 @@ class MultiValDenseBin : public MultiValBin {
   void ConstructHistogram(const data_size_t* data_indices, data_size_t start,
                           data_size_t end, const score_t* gradients,
                           const score_t* hessians, hist_t* out) const override {
-    ConstructHistogramInner<true, true, true, false>(data_indices, start, end,
+    ConstructHistogramInner<true, true, false>(data_indices, start, end,
                                                      gradients, hessians, out);
   }
 
   void ConstructHistogram(data_size_t start, data_size_t end,
                           const score_t* gradients, const score_t* hessians,
                           hist_t* out) const override {
-    ConstructHistogramInner<false, false, true, false>(
+    ConstructHistogramInner<false, false, false>(
         nullptr, start, end, gradients, hessians, out);
-  }
-
-  void ConstructHistogram(const data_size_t* data_indices, data_size_t start,
-                          data_size_t end, const score_t* gradients,
-                          hist_t* out) const override {
-    ConstructHistogramInner<true, true, false, false>(data_indices, start, end,
-                                                      gradients, nullptr, out);
-  }
-
-  void ConstructHistogram(data_size_t start, data_size_t end,
-                          const score_t* gradients,
-                          hist_t* out) const override {
-    ConstructHistogramInner<false, false, false, false>(
-        nullptr, start, end, gradients, nullptr, out);
   }
 
   void ConstructHistogramOrdered(const data_size_t* data_indices,
@@ -154,16 +117,8 @@ class MultiValDenseBin : public MultiValBin {
                                  const score_t* gradients,
                                  const score_t* hessians,
                                  hist_t* out) const override {
-    ConstructHistogramInner<true, true, true, true>(data_indices, start, end,
+    ConstructHistogramInner<true, true, true>(data_indices, start, end,
                                                     gradients, hessians, out);
-  }
-
-  void ConstructHistogramOrdered(const data_size_t* data_indices,
-                                 data_size_t start, data_size_t end,
-                                 const score_t* gradients,
-                                 hist_t* out) const override {
-    ConstructHistogramInner<true, true, false, true>(data_indices, start, end,
-                                                     gradients, nullptr, out);
   }
 
   MultiValBin* CreateLike(data_size_t num_data, int num_bin, int num_feature, double) const override {
